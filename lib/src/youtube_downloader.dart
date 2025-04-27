@@ -7,7 +7,7 @@ import 'models/download_progress.dart';
 import 'permission_checker.dart';
 
 class YoutubeDownloader {
-  static const platform = MethodChannel('com.example.downloader/mux');
+  static const platform = MethodChannel('com.erfan.flutter_erfan_youtube_muxer_2025/mux');
   final _yt = yt.YoutubeExplode();
   
   /// Get available qualities for a YouTube video
@@ -127,6 +127,7 @@ class YoutubeDownloader {
     return input.replaceAll(RegExp(r'[<>:"/\\|?*]'), '');
   }
 }
+
 
 
 
