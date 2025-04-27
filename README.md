@@ -20,10 +20,10 @@ Currently support for Android 12/13+
 Add this to your package's `pubspec.yaml` file:
 
 ```yaml
- dependencies:
+dependencies:
   flutter_erfan_youtube_muxer_2025: ^1.0.0
-
 ```
+
 Then run:
 
 ```bash
