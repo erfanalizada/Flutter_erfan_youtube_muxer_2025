@@ -21,7 +21,7 @@ A powerful Flutter plugin to download YouTube videos in different qualities, mux
 
 ```yaml
 dependencies:
-  flutter_erfan_youtube_muxer_2025: ^1.0.1
+  flutter_erfan_youtube_muxer_2025: ^1.0.2
 ```
 
 ## 🛠️ Platform Setup
