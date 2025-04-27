@@ -2,38 +2,33 @@
 
 A powerful Flutter plugin to download YouTube videos in different qualities, mux audio and video together into a single .mp4 file, and track download progress — all with easy-to-use APIs.
 
-## Supports Android and iOS coming soon!
-Ideal for apps needing offline YouTube video support or media processing.
-Uses Android 
+## ⚠️ Important Usage Notes
+
+- Only H.264/AVC codec in MP4 container format is supported
+- VP9, AV1, and other codecs are not supported due to Android MediaMuxer limitations
+- Not all YouTube videos have H.264/AVC versions available
 
 ## ✨ Features
 
-Fetch available video qualities and audio streams from YouTube videos
-Download selected streams
-Mux (merge) video and audio files automatically
-Real-time download progress updates
-Auto permission handling (storage & media access checks)
-Currently support for Android 12/13+ 
+- Fetch available video qualities (H.264/AVC only)
+- Download selected streams
+- Mux (merge) video and audio files automatically
+- Real-time download progress updates
+- Auto permission handling
+- Currently supports Android 12/13+
 
 ## 📦 Installation
-
-Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
   flutter_erfan_youtube_muxer_2025: ^1.0.1
 ```
 
-Then run:
-
-```bash
-flutter pub get
-```
-
 ## 🛠️ Platform Setup
 
 ### Android
-Add required permissions to your android/app/src/main/AndroidManifest.xml:
+
+1. Add required permissions to `android/app/src/main/AndroidManifest.xml`:
 
 ```xml
 <uses-permission android:name="android.permission.INTERNET" />
@@ -44,45 +39,64 @@ Add required permissions to your android/app/src/main/AndroidManifest.xml:
 <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 ```
 
+2. Ensure your `android/app/build.gradle` has:
+
+```gradle
+android {
+    defaultConfig {
+        minSdkVersion 21
+        targetSdkVersion 33
+    }
+}
+```
+
 ## 📱 Usage
 
-Here's a complete example of how to implement the YouTube downloader:
+Here's a complete example showing proper error handling:
 
 ```dart
 import 'package:flutter_erfan_youtube_muxer_2025/flutter_erfan_youtube_muxer_2025.dart';
 
-// Initialize the downloader
-final downloader = YoutubeDownloader();
-
-// Get available qualities
-final qualities = await downloader.getQualities('https://www.youtube.com/watch?v=YOUR_VIDEO_ID');
-
-// Download with selected quality
-await for (final progress in downloader.downloadVideo(
-  qualities.first,  // Select your preferred quality
-  'https://www.youtube.com/watch?v=YOUR_VIDEO_ID',
-)) {
-  print('Progress: ${progress.progress * 100}%');
-  print('Status: ${progress.status}');
+Future<void> downloadYouTubeVideo() async {
+  final downloader = YoutubeDownloader();
+  
+  try {
+    // Get available qualities (H.264/AVC only)
+    final qualities = await downloader.getQualities('YOUR_YOUTUBE_URL');
+    
+    if (qualities.isEmpty) {
+      print('No compatible video qualities found (H.264/AVC required)');
+      return;
+    }
+    
+    // Download with selected quality
+    await for (final progress in downloader.downloadVideo(
+      qualities.first,
+      'YOUR_YOUTUBE_URL',
+    )) {
+      print('Progress: ${progress.progress * 100}%');
+      print('Status: ${progress.status}');
+    }
+  } catch (e) {
+    print('Error: $e');
+    // Handle error appropriately
+  }
 }
 ```
 
-### Complete Implementation Example
+## 🔍 Troubleshooting
 
-See the [example](example/lib/main.dart) folder for a full implementation with UI.
+Common issues and solutions:
 
-## ⚙️ Customizations
-
-* Customize how streams are selected (e.g., select best quality, lowest size)
-* Customize output file names
-* Build your own UI on top of the download streams (progress bar, etc)
+1. **No qualities available**: The video might not have H.264/AVC versions. Try another video.
+2. **Muxing failed**: Make sure you're only using H.264/AVC videos in MP4 container.
+3. **Permission denied**: Ensure all required permissions are properly set in AndroidManifest.xml.
 
 ## 📢 Notes
 
-* This plugin does not bypass YouTube terms of service
-* Use responsibly. Downloading copyrighted content without permission is illegal in many jurisdictions
-* YouTube frequently updates their platform; if you notice issues, check for youtube_explode_dart updates
-* This project is built upon the youtube_explode_dart library for fetching video and audio information while muxing is handled natively
+- This plugin does not bypass YouTube terms of service
+- Use responsibly and respect copyright
+- YouTube frequently updates their platform; check for updates if issues occur
 
 ## 🤝 Contributions
 

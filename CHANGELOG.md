@@ -1,3 +1,9 @@
+## 1.0.2
+
+* Fixed video stream fps type conversion issue
+* Improved format compatibility checking
+* Enhanced code stability
+
 ## 1.0.1
 
 * Enhanced example implementation with better UI/UX
@@ -16,4 +22,5 @@
   - Progress tracking
   - Android 12/13+ support
   - Permission handling
+
 

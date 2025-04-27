@@ -70,29 +70,14 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
 
     try {
       final qualities = await _downloader.getQualities(_urlController.text);
-      
-      if (qualities.isEmpty) {
-        setState(() => _status = 'No compatible qualities found (H.264/AVC required)');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('This video has no H.264/AVC versions available. Try another video.'),
-            duration: Duration(seconds: 5),
-          ),
-        );
-        return;
-      }
-
       setState(() {
         _qualities = qualities;
-        _status = 'Found ${qualities.length} compatible qualities';
+        _status = 'Found ${qualities.length} qualities';
       });
     } catch (e) {
       setState(() => _status = 'Error: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          duration: const Duration(seconds: 5),
-        ),
+        SnackBar(content: Text('Error: $e')),
       );
     } finally {
       setState(() => _isLoading = false);
@@ -185,12 +170,12 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
                     child: ListTile(
                       title: Text(quality.quality),
                       subtitle: Text(
-                        'Size: ${(quality.size / 1024 / 1024).toStringAsFixed(2)} MB',
+                        'Size: ${(quality.size / 1024 / 1024).toStringAsFixed(2)} MB\n'
+                        'Codec: ${quality.codec}',
                       ),
+                      isThreeLine: true,
                       trailing: ElevatedButton(
-                        onPressed: _isLoading
-                            ? null
-                            : () => _downloadVideo(quality),
+                        onPressed: _isLoading ? null : () => _downloadVideo(quality),
                         child: const Text('Download'),
                       ),
                     ),
@@ -204,5 +189,3 @@ class _YouTubeDownloaderScreenState extends State<YouTubeDownloaderScreen> {
     );
   }
 }
-
-

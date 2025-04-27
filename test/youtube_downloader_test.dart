@@ -23,7 +23,10 @@ void main() {
         quality: '720p',
         url: 'https://test.com/video',
         size: 1000000,
-        container: 'mp4'
+        container: 'mp4',
+        codec: 'avc1',
+        bitrate: 1500000,
+        fps: 30
       );
       
       expect(() async {
@@ -40,6 +43,7 @@ void main() {
     });
   });
 }
+
 
 
 
