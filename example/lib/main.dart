@@ -1,4 +1,5 @@
-import 'package:youtube_video_downloader/youtube_video_downloader.dart';
+import 'package:flutter_erfan_youtube_muxer_2025/youtube_video_downloader.dart';
+import 'dart:developer' show log;
 
 void main() async {
   final downloader = YoutubeDownloader();
@@ -16,14 +17,16 @@ void main() async {
       'https://youtube.com/watch?v=...',
       customOutputPath: ''  // or null
     )) {
-      print('Progress: ${(progress.progress * 100).toStringAsFixed(2)}%');
-      print('Status: ${progress.status}');
-      print('Time remaining: ${progress.estimatedTimeRemaining} seconds');
+      log('Progress: ${(progress.progress * 100).toStringAsFixed(2)}%');
+      log('Status: ${progress.status}');
+      log('Time remaining: ${progress.estimatedTimeRemaining} seconds');
     }
     
   } catch (e) {
-    print('Error: $e');
+    log('Error: $e');
   }
 }
+
+
 
 

@@ -4,9 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart';
 import 'models/video_quality.dart';
 import 'models/download_progress.dart';
-import 'models/download_result.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:device_info_plus/device_info_plus.dart';
+import 'permission_checker.dart';
 
 class YoutubeDownloader {
   static const platform = MethodChannel('com.example.downloader/mux');
@@ -32,24 +30,6 @@ class YoutubeDownloader {
     }
   }
 
-  Future<bool> _checkStoragePermission() async {
-    if (Platform.isAndroid) {
-      final deviceInfo = DeviceInfoPlugin();
-      final androidInfo = await deviceInfo.androidInfo;
-      
-      if (androidInfo.version.sdkInt >= 33) { // Android 13 and above
-        return await Permission.photos.isGranted && 
-               await Permission.videos.isGranted;
-      } else {
-        return await Permission.storage.isGranted;
-      }
-    } else if (Platform.isIOS) {
-      return await Permission.photos.isGranted &&
-             await Permission.mediaLibrary.isGranted;
-    }
-    return false;
-  }
-
   /// Download video with progress updates
   Stream<DownloadProgress> downloadVideo(
     VideoQuality quality,
@@ -71,10 +51,9 @@ class YoutubeDownloader {
       
       String outputPath;
       if (customOutputPath != null && customOutputPath.trim().isNotEmpty) {
-        // Check permissions if custom path is provided
-        final hasPermission = await _checkStoragePermission();
+        final hasPermission = await PermissionChecker.hasStoragePermission();
         if (!hasPermission) {
-          throw Exception('Storage permission is required to save to custom location. Please grant the permission and try again.');
+          throw Exception('Required storage permissions are not granted');
         }
 
         final directory = Directory(customOutputPath);
@@ -148,6 +127,9 @@ class YoutubeDownloader {
     return input.replaceAll(RegExp(r'[<>:"/\\|?*]'), '');
   }
 }
+
+
+
 
 
 

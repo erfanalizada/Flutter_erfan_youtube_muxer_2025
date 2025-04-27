@@ -127,7 +127,7 @@ class _DownloadScreenState extends State<DownloadScreen> {
           return;
         }
 
-        final audioResult = await _downloader!.downloadAudioStream(audioStreams[selectedIndex], video.title);
+        await _downloader!.downloadAudioStream(audioStreams[selectedIndex], video.title);
 
         setState(() {
           _message = 'Audio Downloaded Successfully!';
@@ -175,12 +175,14 @@ class _DownloadScreenState extends State<DownloadScreen> {
         });
 
         // 👇 Navigate to video player
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => VideoPlayerScreen(filePath: downloadResult.path),
-          ),
-        );
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => VideoPlayerScreen(filePath: downloadResult.path),
+            ),
+          );
+        }
       }
 
     } catch (e) {
