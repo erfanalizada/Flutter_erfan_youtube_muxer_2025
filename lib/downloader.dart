@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 class DownloadItem {
   final String title;
@@ -52,12 +54,33 @@ class Downloader {
         .toList();
   }
 
-  Future<DownloadItem> downloadAudioStream(AudioOnlyStreamInfo audioStream, String title) async {
+  Future<DownloadItem> downloadAudioStream(
+    AudioOnlyStreamInfo audioStream, 
+    String title,
+    {String? customOutputPath}
+  ) async {
     if (!_isInitialized) await init();
 
     final safeTitle = _sanitize(title);
-    final filePath = '${_downloadDirectory.path}/$safeTitle-${DateTime.now().millisecondsSinceEpoch}.m4a';
-    final file = File(filePath);
+    
+    String outputPath;
+    if (customOutputPath != null) {
+      final directory = Directory(customOutputPath);
+      if (await directory.exists()) {
+        outputPath = '$customOutputPath/$safeTitle-${DateTime.now().millisecondsSinceEpoch}.m4a';
+      } else {
+        try {
+          await directory.create(recursive: true);
+          outputPath = '$customOutputPath/$safeTitle-${DateTime.now().millisecondsSinceEpoch}.m4a';
+        } catch (e) {
+          outputPath = '${_downloadDirectory.path}/$safeTitle-${DateTime.now().millisecondsSinceEpoch}.m4a';
+        }
+      }
+    } else {
+      outputPath = '${_downloadDirectory.path}/$safeTitle-${DateTime.now().millisecondsSinceEpoch}.m4a';
+    }
+
+    final file = File(outputPath);
     final output = file.openWrite();
 
     final stream = _yt.videos.streamsClient.get(audioStream);
@@ -66,7 +89,25 @@ class Downloader {
     }
     await output.close();
 
-    return DownloadItem(title: title, path: filePath, isAudio: true);
+    return DownloadItem(title: title, path: outputPath, isAudio: true);
+  }
+
+  Future<bool> _checkStoragePermission() async {
+    if (Platform.isAndroid) {
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+      
+      if (androidInfo.version.sdkInt >= 33) { // Android 13 and above
+        return await Permission.photos.isGranted && 
+               await Permission.videos.isGranted;
+      } else {
+        return await Permission.storage.isGranted;
+      }
+    } else if (Platform.isIOS) {
+      return await Permission.photos.isGranted &&
+             await Permission.mediaLibrary.isGranted;
+    }
+    return false;
   }
 
   Future<DownloadItem> downloadVideoAndMuxAudio({
@@ -74,13 +115,36 @@ class Downloader {
     required AudioOnlyStreamInfo audioStream,
     required String title,
     required void Function(double progress, String status) onProgress,
+    String? customOutputPath,
   }) async {
     if (!_isInitialized) await init();
 
     final safeTitle = _sanitize(title);
     final tempVideoFile = File('${_downloadDirectory.path}/temp_video.mp4');
     final tempAudioFile = File('${_downloadDirectory.path}/temp_audio.m4a');
-    final outputPath = '${_downloadDirectory.path}/$safeTitle-${DateTime.now().millisecondsSinceEpoch}.mp4';
+    
+    String outputPath;
+    if (customOutputPath != null && customOutputPath.trim().isNotEmpty) {
+      // Check permissions if custom path is provided
+      final hasPermission = await _checkStoragePermission();
+      if (!hasPermission) {
+        throw Exception('Storage permission is required to save to custom location. Please grant the permission and try again.');
+      }
+
+      final directory = Directory(customOutputPath);
+      if (await directory.exists()) {
+        outputPath = '$customOutputPath/$safeTitle-${DateTime.now().millisecondsSinceEpoch}.mp4';
+      } else {
+        try {
+          await directory.create(recursive: true);
+          outputPath = '$customOutputPath/$safeTitle-${DateTime.now().millisecondsSinceEpoch}.mp4';
+        } catch (e) {
+          outputPath = '${_downloadDirectory.path}/$safeTitle-${DateTime.now().millisecondsSinceEpoch}.mp4';
+        }
+      }
+    } else {
+      outputPath = '${_downloadDirectory.path}/$safeTitle-${DateTime.now().millisecondsSinceEpoch}.mp4';
+    }
 
     try {
       // Download video

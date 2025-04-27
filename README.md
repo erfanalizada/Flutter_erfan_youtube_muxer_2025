@@ -1,16 +1,55 @@
-# flutter_erfan_youtube_muxer_2025
+# YouTube Video Downloader
 
-A new Flutter project.
+A Flutter package for downloading YouTube videos with quality selection, supporting custom storage paths and permissions handling.
+
+## Features
+
+- Download YouTube videos with quality selection
+- Support for custom download paths
+- Automatic permission handling
+- Progress tracking
+- Fallback to app's private storage
+- Support for Android and iOS
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+Add this to your package's `pubspec.yaml` file:
 
-A few resources to get you started if this is your first Flutter project:
+```yaml
+dependencies:
+  youtube_video_downloader: ^0.0.1
+```
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Usage
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```dart
+import 'package:youtube_video_downloader/youtube_video_downloader.dart';
+
+// Initialize downloader
+final downloader = YoutubeDownloader();
+
+// Download with custom path
+try {
+  await downloader.downloadVideo(
+    VideoQuality.high,
+    'https://youtube.com/watch?v=...',
+    customOutputPath: '/storage/emulated/0/Downloads/YouTube'
+  );
+} catch (e) {
+  print('Error: $e');
+}
+
+// Download to app's private storage
+await downloader.downloadVideo(
+  VideoQuality.medium,
+  'https://youtube.com/watch?v=...',
+);
+```
+
+## Additional Information
+
+For more examples and usage, please refer to the example app in the `/example` directory.
+
+## License
+
+[Add your license here]
