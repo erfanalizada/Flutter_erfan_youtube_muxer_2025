@@ -22,7 +22,7 @@ class Downloader {
 
   Downloader({YoutubeExplode? yt, MethodChannel? platform, Directory? overrideDirectory})
       : _yt = yt ?? YoutubeExplode(),
-        _platform = platform ?? MethodChannel('com.example.downloader/mux'),
+        _platform = platform ?? const MethodChannel('com.example.downloader/mux'),
         _overrideDirectory = overrideDirectory;
 
   Future<bool> checkPermissions() async {
