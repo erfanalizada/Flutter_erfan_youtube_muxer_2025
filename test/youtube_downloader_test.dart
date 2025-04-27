@@ -1,5 +1,5 @@
+import 'package:flutter_erfan_youtube_muxer_2025/flutter_erfan_youtube_muxer_2025.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_erfan_youtube_muxer_2025/youtube_video_downloader.dart';
 
 void main() {
   group('YoutubeDownloader Tests', () {
