@@ -1,6 +1,6 @@
 name: flutter_erfan_youtube_muxer_2025
-description: Flutter package for YouTube video downloading and muxing with quality selection.
-version: 1.0.2
+description: Flutter package for YouTube video downloading and muxing with quality selection. DISCONTINUED - Please use youtube_muxer_2025: ^0.0.9 instead.
+version: 1.0.7
 homepage: https://github.com/erfanalizada/Flutter_erfan_youtube_muxer_2025
 repository: https://github.com/erfanalizada/Flutter_erfan_youtube_muxer_2025
 issue_tracker: https://github.com/erfanalizada/Flutter_erfan_youtube_muxer_2025/issues
