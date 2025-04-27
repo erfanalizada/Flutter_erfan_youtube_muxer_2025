@@ -1,10 +1,10 @@
+// lib/downloader.dart
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:http_parser/http_parser.dart';
 
 class DownloadItem {
   final String title;
@@ -18,61 +18,66 @@ class Downloader {
   final YoutubeExplode _yt;
   final MethodChannel _platform;
   final Directory? _overrideDirectory;
-  late Directory _downloadDirectory;
-  bool _isInitialized = false;
+  Directory? _downloadDirectory;
 
   Downloader({YoutubeExplode? yt, MethodChannel? platform, Directory? overrideDirectory})
       : _yt = yt ?? YoutubeExplode(),
-        _platform = platform ?? const MethodChannel('com.example.downloader/mux'),
+        _platform = platform ?? MethodChannel('com.example.downloader/mux'),
         _overrideDirectory = overrideDirectory;
 
-  Future<void> init() async {
-    if (_overrideDirectory != null) {
-      _downloadDirectory = _overrideDirectory!;
-    } else {
-      _downloadDirectory = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
+  Future<bool> checkPermissions() async {
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      if (androidInfo.version.sdkInt >= 33) {
+        return await Permission.photos.isGranted &&
+            await Permission.videos.isGranted &&
+            await Permission.audio.isGranted;
+      } else {
+        return await Permission.storage.isGranted;
+      }
+    } else if (Platform.isIOS) {
+      return await Permission.photos.isGranted &&
+          await Permission.mediaLibrary.isGranted;
     }
-    _isInitialized = true;
+    return false;
+  }
+
+  Future<Directory> get _directory async {
+    if (_downloadDirectory != null) return _downloadDirectory!;
+    _downloadDirectory = _overrideDirectory ?? await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
+    return _downloadDirectory!;
   }
 
   Future<List<VideoOnlyStreamInfo>> getCompatibleVideoStreams(String url) async {
-    final videoId = VideoId.parseVideoId(url);
-    if (videoId == null) throw Exception('Invalid YouTube URL');
-
+    if (!await checkPermissions()) {
+      throw Exception('Required permissions not granted');
+    }
+    final videoId = VideoId.parseVideoId(url) ?? (throw Exception('Invalid YouTube URL'));
     final manifest = await _yt.videos.streamsClient.getManifest(videoId);
-    return manifest.videoOnly.where((v) =>
-        v.container.name == 'mp4' &&
-        v.videoCodec.toLowerCase().contains('avc') &&
-        !v.videoCodec.toLowerCase().contains('av1')).toList();
+    return manifest.videoOnly
+        .where((v) =>
+            v.container.name == 'mp4' &&
+            v.videoCodec.toLowerCase().contains('avc') &&
+            !v.videoCodec.toLowerCase().contains('av1'))
+        .toList();
   }
 
   Future<List<AudioOnlyStreamInfo>> getCompatibleAudioStreams(String url) async {
-    final videoId = VideoId.parseVideoId(url);
-    if (videoId == null) throw Exception('Invalid YouTube URL');
-
+    if (!await checkPermissions()) {
+      throw Exception('Required permissions not granted');
+    }
+    final videoId = VideoId.parseVideoId(url) ?? (throw Exception('Invalid YouTube URL'));
     final manifest = await _yt.videos.streamsClient.getManifest(videoId);
     return manifest.audioOnly.where((a) => a.codec.mimeType.contains('audio/mp4')).toList();
   }
 
-  Future<DownloadItem> downloadAudioStream(
-    AudioOnlyStreamInfo streamInfo,
-    String title, {
-    String? customOutputPath,
-  }) async {
-    if (!_isInitialized) await init();
-
-    final path = customOutputPath ?? _downloadDirectory.path;
-    final safeTitle = _sanitize(title);
-    final filePath = '$path/$safeTitle-${DateTime.now().millisecondsSinceEpoch}.m4a';
-    final file = File(filePath);
-    final output = file.openWrite();
-
-    final stream = _yt.videos.streamsClient.get(streamInfo);
-    await for (final data in stream) {
-      output.add(data);
+  Future<DownloadItem> downloadAudioStream(AudioOnlyStreamInfo streamInfo, String title, {String? customOutputPath}) async {
+    if (!await checkPermissions()) {
+      throw Exception('Required permissions not granted');
     }
-    await output.close();
-
+    final dir = customOutputPath ?? (await _directory).path;
+    final filePath = '$dir/${sanitize(title)}-${DateTime.now().millisecondsSinceEpoch}.m4a';
+    await _downloadStream(streamInfo, filePath);
     return DownloadItem(title: title, path: filePath, isAudio: true);
   }
 
@@ -83,54 +88,68 @@ class Downloader {
     required void Function(double progress, String status) onProgress,
     String? customOutputPath,
   }) async {
-    if (!_isInitialized) await init();
+    if (!await checkPermissions()) {
+      throw Exception('Required permissions not granted');
+    }
+    final dir = customOutputPath ?? (await _directory).path;
+    final safeTitle = sanitize(title);
 
-    final path = customOutputPath ?? _downloadDirectory.path;
-    final safeTitle = _sanitize(title);
-
-    final tempVideoFile = File('$path/temp_video.mp4');
-    final tempAudioFile = File('$path/temp_audio.m4a');
-    final outputPath = '$path/$safeTitle-${DateTime.now().millisecondsSinceEpoch}.mp4';
+    final tempVideoPath = '$dir/temp_video.mp4';
+    final tempAudioPath = '$dir/temp_audio.m4a';
+    final outputPath = '$dir/$safeTitle-${DateTime.now().millisecondsSinceEpoch}.mp4';
 
     try {
-      // Download video
       onProgress(0.0, 'Downloading video...');
-      final videoOutput = tempVideoFile.openWrite();
-      await for (final data in _yt.videos.streamsClient.get(videoStream)) {
-        videoOutput.add(data);
-      }
-      await videoOutput.close();
+      await _downloadStream(videoStream, tempVideoPath);
 
-      // Download audio
       onProgress(0.5, 'Downloading audio...');
-      final audioOutput = tempAudioFile.openWrite();
-      await for (final data in _yt.videos.streamsClient.get(audioStream)) {
-        audioOutput.add(data);
-      }
-      await audioOutput.close();
+      await _downloadStream(audioStream, tempAudioPath);
 
-      // Mux
-      onProgress(0.9, 'Muxing video and audio...');
+      onProgress(0.9, 'Muxing...');
       final success = await _platform.invokeMethod<bool>('muxVideoAndAudio', {
-        'videoPath': tempVideoFile.path,
-        'audioPath': tempAudioFile.path,
+        'videoPath': tempVideoPath,
+        'audioPath': tempAudioPath,
         'outputPath': outputPath,
+        'audioConfig': {
+          'sampleRate': audioStream.bitrate.bitsPerSecond,
+          'channelCount': 2, // Force stereo output
+          'channelMask': 3, // CHANNEL_OUT_STEREO
+        }
       });
 
       if (success != true) {
-        throw Exception('Muxing failed');
+        throw Exception('Muxing failed via platform channel.');
       }
 
       onProgress(1.0, 'Completed');
       return DownloadItem(title: title, path: outputPath, isAudio: false);
     } finally {
-      if (await tempVideoFile.exists()) await tempVideoFile.delete();
-      if (await tempAudioFile.exists()) await tempAudioFile.delete();
+      await _cleanup([tempVideoPath, tempAudioPath]);
     }
   }
 
-  String _sanitize(String input) {
-    return input.replaceAll(RegExp(r'[<>:"/\\|?*]'), '');
+  Future<void> _downloadStream(StreamInfo streamInfo, String savePath) async {
+    final file = File(savePath);
+    final output = file.openWrite();
+    await for (final data in _yt.videos.streamsClient.get(streamInfo)) {
+      output.add(data);
+    }
+    await output.close();
+  }
+
+  Future<void> _cleanup(List<String> paths) async {
+    for (final path in paths) {
+      final file = File(path);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
+  }
+
+  String sanitize(String input) => input.replaceAll(RegExp(r'[<>:"/\\|?*]'), '');
+
+  Future<Video> getVideoInfo(String videoId) async {
+    return await _yt.videos.get(videoId);
   }
 
   void dispose() {

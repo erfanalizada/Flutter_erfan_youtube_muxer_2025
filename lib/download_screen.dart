@@ -4,7 +4,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'downloader.dart';
-import 'video_player_screen.dart'; // 👈 import this!
+import 'video_player_screen.dart';
 
 class DownloadScreen extends StatefulWidget {
   const DownloadScreen({super.key});
@@ -15,85 +15,39 @@ class DownloadScreen extends StatefulWidget {
 
 class _DownloadScreenState extends State<DownloadScreen> {
   final TextEditingController _controller = TextEditingController();
+  final Downloader _downloader = Downloader();
+
   bool _isDownloading = false;
   String _message = '';
   bool _hasPermissions = false;
-  Downloader? _downloader;
 
   @override
   void initState() {
     super.initState();
-    _checkPermissions();
+    _checkAndRequestPermissions();
   }
 
-  Future<void> _checkPermissions() async {
-    bool hasPermissions = false;
-
-    if (Platform.isAndroid) {
-      if (await _isAndroid13OrHigher()) {
-        hasPermissions = await Permission.photos.isGranted &&
-            await Permission.videos.isGranted &&
-            await Permission.audio.isGranted &&
-            await Permission.notification.isGranted;
-      } else {
-        hasPermissions = await Permission.storage.isGranted;
-      }
-    } else if (Platform.isIOS) {
-      hasPermissions = await Permission.photos.isGranted &&
-          await Permission.mediaLibrary.isGranted;
-    }
-
-    setState(() {
-      _hasPermissions = hasPermissions;
-    });
-  }
-
-  Future<void> _requestPermissions() async {
+  Future<void> _checkAndRequestPermissions() async {
     try {
-      if (Platform.isAndroid) {
-        if (await _isAndroid13OrHigher()) {
-          await Permission.photos.request();
-          await Permission.videos.request();
-          await Permission.audio.request();
-          await Permission.notification.request();
-        } else {
-          await Permission.storage.request();
-        }
-      } else if (Platform.isIOS) {
-        await Permission.photos.request();
-        await Permission.mediaLibrary.request();
-      }
-
-      await _checkPermissions();
+      final hasPermissions = await _downloader.checkPermissions();
+      setState(() {
+        _hasPermissions = hasPermissions;
+      });
     } catch (e) {
       setState(() {
-        _message = 'Error requesting permissions: ${e.toString()}';
+        _message = 'Error checking permissions: $e';
       });
     }
   }
 
-  Future<bool> _isAndroid13OrHigher() async {
-    if (Platform.isAndroid) {
-      final deviceInfo = DeviceInfoPlugin();
-      final androidInfo = await deviceInfo.androidInfo;
-      return androidInfo.version.sdkInt >= 33;
-    }
-    return false;
-  }
-
-  Future<void> _startDownload(bool isAudioOnly) async {
+  Future<void> _startDownload({required bool isAudioOnly}) async {
     final url = _controller.text.trim();
     if (url.isEmpty) {
-      setState(() {
-        _message = 'Please enter a YouTube URL';
-      });
+      _showMessage('Please enter a YouTube URL');
       return;
     }
-
     if (!_hasPermissions) {
-      setState(() {
-        _message = 'Please grant required permissions first';
-      });
+      _showMessage('Please grant required permissions first');
       return;
     }
 
@@ -103,116 +57,80 @@ class _DownloadScreenState extends State<DownloadScreen> {
     });
 
     try {
-      _downloader ??= Downloader();
-      await _downloader!.init();
-
-      final yt = YoutubeExplode();
-      final videoId = VideoId.parseVideoId(url);
-      if (videoId == null) throw Exception('Invalid YouTube URL');
-      final video = await yt.videos.get(videoId);
+      final videoId = VideoId.parseVideoId(url) ?? (throw Exception('Invalid YouTube URL'));
+      final video = await _downloader.getVideoInfo(videoId);
 
       if (isAudioOnly) {
-        final audioStreams = await _downloader!.getCompatibleAudioStreams(url);
-        if (audioStreams.isEmpty) throw Exception('No audio streams found');
+        final audios = await _downloader.getCompatibleAudioStreams(url);
+        if (audios.isEmpty) throw Exception('No audio streams found');
 
-        final selectedIndex = await _showStreamSelectionDialog(
-          audioStreams.map((a) => '${a.bitrate.kiloBitsPerSecond ~/ 1000} kbps').toList(),
-        );
+        final selected = await _selectStreamDialog(audios.map((a) => '${a.bitrate.kiloBitsPerSecond ~/ 1000} kbps').toList());
+        if (selected == null) return _cancelDownload();
 
-        if (selectedIndex == null) {
-          setState(() {
-            _message = 'Download canceled';
-            _isDownloading = false;
-          });
-          return;
-        }
-
-        await _downloader!.downloadAudioStream(audioStreams[selectedIndex], video.title);
-
-        setState(() {
-          _message = 'Audio Downloaded Successfully!';
-        });
-
+        await _downloader.downloadAudioStream(audios[selected], video.title);
+        _showMessage('Audio downloaded successfully!');
       } else {
-        final videoStreams = await _downloader!.getCompatibleVideoStreams(url);
-        final audioStreams = await _downloader!.getCompatibleAudioStreams(url);
+        final videos = await _downloader.getCompatibleVideoStreams(url);
+        final audios = await _downloader.getCompatibleAudioStreams(url);
 
-        if (videoStreams.isEmpty) {
-          throw Exception('No compatible video streams found. Only H.264/AVC videos are supported.');
-        }
-        if (audioStreams.isEmpty) {
-          throw Exception('No compatible audio streams found');
-        }
+        if (videos.isEmpty) throw Exception('No compatible video streams found.');
+        if (audios.isEmpty) throw Exception('No compatible audio streams found.');
 
-        final selectedIndex = await _showStreamSelectionDialog(
-          videoStreams.map((v) => '${v.videoQualityLabel} (${v.bitrate.kiloBitsPerSecond ~/ 1000} kbps)').toList(),
+        final selected = await _selectStreamDialog(
+          videos.map((v) => '${v.videoQualityLabel} (${v.bitrate.kiloBitsPerSecond ~/ 1000} kbps)').toList(),
         );
+        if (selected == null) return _cancelDownload();
 
-        if (selectedIndex == null) {
-          setState(() {
-            _message = 'Download canceled';
-            _isDownloading = false;
-          });
-          return;
-        }
-
-        final selectedVideo = videoStreams[selectedIndex];
-        final bestAudio = audioStreams.first;
-
-        final downloadResult = await _downloader!.downloadVideoAndMuxAudio(
-          onProgress: (progress, status) {
-            setState(() {
-              _message = status;
-            });
-          },
-          videoStream: selectedVideo,
-          audioStream: bestAudio,
+        final result = await _downloader.downloadVideoAndMuxAudio(
+          videoStream: videos[selected],
+          audioStream: audios.first,
           title: video.title,
+          onProgress: (progress, status) => setState(() => _message = status),
         );
 
-        setState(() {
-          _message = 'Video Downloaded Successfully!';
-        });
-
-        // 👇 Navigate to video player
+        _showMessage('Video downloaded successfully!');
         if (mounted) {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => VideoPlayerScreen(filePath: downloadResult.path),
+              builder: (_) => VideoPlayerScreen(filePath: result.path),
             ),
           );
         }
       }
-
     } catch (e) {
-      setState(() {
-        _message = 'Error: ${e.toString()}';
-      });
+      _showMessage('Error: $e');
     } finally {
-      setState(() {
-        _isDownloading = false;
-      });
+      if (mounted) setState(() => _isDownloading = false);
     }
   }
 
-  Future<int?> _showStreamSelectionDialog(List<String> options) async {
-    return await showDialog<int>(
+  Future<int?> _selectStreamDialog(List<String> options) {
+    return showDialog<int>(
       context: context,
-      builder: (context) {
-        return SimpleDialog(
-          title: const Text('Select Quality'),
-          children: options.asMap().entries.map((entry) {
-            final idx = entry.key;
-            final val = entry.value;
-            return SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, idx),
-              child: Text(val),
-            );
-          }).toList(),
-        );
-      },
+      builder: (context) => SimpleDialog(
+        title: const Text('Select Quality'),
+        children: options
+            .asMap()
+            .entries
+            .map((entry) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(context, entry.key),
+                  child: Text(entry.value),
+                ))
+            .toList(),
+      ),
     );
+  }
+
+  void _showMessage(String text) {
+    if (mounted) {
+      setState(() => _message = text);
+    }
+  }
+
+  void _cancelDownload() {
+    _showMessage('Download canceled');
+    setState(() => _isDownloading = false);
   }
 
   @override
@@ -233,46 +151,37 @@ class _DownloadScreenState extends State<DownloadScreen> {
             const SizedBox(height: 20),
             if (!_hasPermissions)
               ElevatedButton.icon(
-                onPressed: _requestPermissions,
+                onPressed: _checkAndRequestPermissions,
                 icon: const Icon(Icons.security),
                 label: const Text('Grant Permissions'),
               ),
-            if (_hasPermissions && _isDownloading)
-              const CircularProgressIndicator(),
-            if (_hasPermissions && !_isDownloading)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: () => _startDownload(true),
-                    icon: const Icon(Icons.audiotrack),
-                    label: const Text('Download Audio'),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: () => _startDownload(false),
-                    icon: const Icon(Icons.video_library),
-                    label: const Text('Download Video'),
-                  ),
-                ],
-              ),
+            if (_hasPermissions)
+              _isDownloading
+                  ? const CircularProgressIndicator()
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () => _startDownload(isAudioOnly: true),
+                          icon: const Icon(Icons.audiotrack),
+                          label: const Text('Audio'),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: () => _startDownload(isAudioOnly: false),
+                          icon: const Icon(Icons.video_library),
+                          label: const Text('Video'),
+                        ),
+                      ],
+                    ),
             const SizedBox(height: 20),
             if (_message.isNotEmpty)
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: _message.startsWith('Error')
-                      ? Colors.red[100]
-                      : Colors.green[100],
+                  color: _message.startsWith('Error') ? Colors.red[100] : Colors.green[100],
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(
-                  _message,
-                  style: TextStyle(
-                    color: _message.startsWith('Error')
-                        ? Colors.red[900]
-                        : Colors.green[900],
-                  ),
-                ),
+                child: Text(_message),
               ),
           ],
         ),
